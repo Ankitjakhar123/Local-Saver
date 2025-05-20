@@ -16,14 +16,18 @@ const ProductCard = ({ product }) => {
   return (
     <motion.div 
       whileHover={{ y: -5 }}
-      className="card overflow-hidden group"
+      className="card overflow-hidden group relative"
     >
-      <Link to={`/compare/${product.name}`}>
+      <Link 
+        to={`/compare/${product.name}`}
+        className="block touch-manipulation"
+      >
         <div className="relative">
-          <div className="aspect-square rounded-lg overflow-hidden mb-3">
+          <div className="aspect-square rounded-lg overflow-hidden mb-2 sm:mb-3">
             <img 
               src={product.image} 
               alt={product.name} 
+              loading="lazy"
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
             />
           </div>
@@ -36,17 +40,17 @@ const ProductCard = ({ product }) => {
           )}
         </div>
         
-        <h3 className="font-medium text-lg">{product.name}</h3>
+        <h3 className="font-medium text-base sm:text-lg line-clamp-2 min-h-[2.5rem] sm:min-h-[3.5rem]">{product.name}</h3>
         
         <div className="flex justify-between items-end mt-2">
           <div>
-            <div className="text-amoled-accent-primary font-bold">{product.priceRange}</div>
+            <div className="text-amoled-accent-primary font-bold text-sm sm:text-base">{product.priceRange}</div>
             <div className="text-xs text-amoled-gray-300">{product.unit}</div>
           </div>
           
           <button 
             onClick={handleAddToCart}
-            className="p-2 rounded-full bg-amoled-gray-700 hover:bg-amoled-accent-primary hover:text-amoled-black transition-colors"
+            className="p-2 sm:p-3 rounded-full bg-amoled-gray-700 hover:bg-amoled-accent-primary hover:text-amoled-black transition-colors touch-manipulation"
             aria-label="Add to cart"
           >
             <ShoppingCart className="h-4 w-4" />

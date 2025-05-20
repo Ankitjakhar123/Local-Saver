@@ -18,6 +18,23 @@ const ComparisonPage = () => {
   const [comparisons, setComparisons] = useState([]);
   const [showPriceHistory, setShowPriceHistory] = useState(false);
   const [priceAlertSet, setPriceAlertSet] = useState(false);
+  const [sortField, setSortField] = useState('price');
+  const [sortDirection, setSortDirection] = useState('asc');
+  
+  // Sort handler for the dropdown
+  const handleSort = (e) => {
+    const [field, direction] = e.target.value.split(':');
+    setSortField(field);
+    setSortDirection(direction);
+    
+    // Sort the comparisons
+    const sortedComps = [...comparisons].sort((a, b) => {
+      return direction === 'asc' 
+        ? a[field] > b[field] ? 1 : -1
+        : a[field] < b[field] ? 1 : -1;
+    });
+    setComparisons(sortedComps);
+  };
   
   // Simulate loading data from API
   useEffect(() => {
@@ -145,40 +162,42 @@ const ComparisonPage = () => {
         <>
           {/* Product Info Section */}
           <section className="mb-8">
-            <div className="flex flex-col md:flex-row gap-6">
-              <div className="md:w-1/3">
+            <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+              <div className="w-full md:w-1/3 mb-4 md:mb-0">
                 <div className="rounded-xl overflow-hidden">
                   <img 
                     src={product.image} 
                     alt={product.name} 
-                    className="w-full h-64 object-cover" 
+                    className="w-full h-48 sm:h-64 object-cover" 
                   />
                 </div>
               </div>
               
-              <div className="md:w-2/3">
-                <div className="flex flex-wrap justify-between items-start mb-2">
-                  <h1 className="text-2xl md:text-3xl font-bold">{product.name}</h1>
+              <div className="w-full md:w-2/3">
+                <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                  <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">{product.name}</h1>
                   
                   <div className="flex items-center">
                     <button 
                       onClick={handlePriceAlert}
-                      className={`p-2 rounded-full mr-2 ${
+                      className={`p-2 rounded-full mr-2 touch-manipulation ${
                         priceAlertSet 
                           ? 'bg-amoled-accent-primary text-amoled-black' 
                           : 'bg-amoled-gray-700 hover:bg-amoled-gray-600'
                       }`}
+                      aria-label="Set price alert"
                     >
                       <AlertTriangle className="h-5 w-5" />
                     </button>
                     
                     <button 
                       onClick={() => setShowPriceHistory(!showPriceHistory)}
-                      className={`p-2 rounded-full ${
+                      className={`p-2 rounded-full touch-manipulation ${
                         showPriceHistory 
                           ? 'bg-amoled-accent-secondary text-amoled-black' 
                           : 'bg-amoled-gray-700 hover:bg-amoled-gray-600'
                       }`}
+                      aria-label="View price history"
                     >
                       <Eye className="h-5 w-5" />
                     </button>
@@ -191,13 +210,13 @@ const ComparisonPage = () => {
                   
                   <div className="mt-2 flex items-center text-sm text-amoled-gray-300">
                     <Clock className="h-4 w-4 mr-1" />
-                    <span>Last updated: {new Date(product.lastUpdated).toLocaleString()}</span>
+                    <span>Last updated: {new Date(product.lastUpdated).toLocaleTimeString()} today</span>
                   </div>
                 </div>
                 
                 {cheapestVendor && (
                   <div className="card bg-amoled-gray-700 mb-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <div className="text-sm text-amoled-gray-300 mb-1">Best Price</div>
                         <div className="text-2xl font-bold text-amoled-accent-primary">₹{cheapestVendor.price}</div>
@@ -216,16 +235,16 @@ const ComparisonPage = () => {
                       
                       <button 
                         onClick={() => handleAddAllToCart(cheapestVendor.vendor)}
-                        className="btn btn-primary flex items-center"
+                        className="btn btn-primary flex items-center justify-center w-full sm:w-auto touch-manipulation"
                       >
-                        <ShoppingCart className="h-4 w-4 mr-2" />
+                        <ShoppingCart className="h-5 w-5 mr-2" />
                         Add to Basket
                       </button>
                     </div>
                   </div>
                 )}
                 
-                <div className="text-amoled-gray-200">
+                <div className="text-amoled-gray-200 text-sm sm:text-base">
                   <p className="mb-3">{product.description}</p>
                   <p>{product.nutritionalInfo}</p>
                 </div>
@@ -247,20 +266,6 @@ const ComparisonPage = () => {
                   <div className="h-48 md:h-64 bg-amoled-gray-700 rounded-lg flex items-center justify-center">
                     <p className="text-amoled-gray-300">Price history graph would appear here</p>
                   </div>
-                  
-                  <div className="mt-4">
-                    <div className="flex justify-between items-center text-sm text-amoled-gray-300">
-                      <span>30 days ago</span>
-                      <span>Today</span>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4 pt-4 border-t border-amoled-gray-700">
-                    <div className="flex items-center text-sm text-amoled-gray-300">
-                      <Store className="h-4 w-4 mr-2" />
-                      <span>Price trend shows a 12% decrease over the last 30 days</span>
-                    </div>
-                  </div>
                 </div>
               </motion.section>
             )}
@@ -268,7 +273,27 @@ const ComparisonPage = () => {
           
           {/* Comparison Table */}
           <section className="mb-8">
-            <h2 className="text-xl font-semibold mb-4">Price Comparison</h2>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+              <h2 className="text-xl font-semibold">Price Comparison</h2>
+              
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative w-full sm:w-auto">
+                  <select 
+                    className="w-full sm:w-auto bg-amoled-gray-700 border border-amoled-gray-600 rounded-lg px-3 py-2 pr-8 appearance-none text-sm touch-manipulation"
+                    onChange={handleSort}
+                    value={`${sortField}:${sortDirection}`}
+                    aria-label="Sort by"
+                  >
+                    <option value="price:asc">Price: Low to High</option>
+                    <option value="price:desc">Price: High to Low</option>
+                    <option value="deliveryTime:asc">Fastest Delivery</option>
+                    <option value="deliveryFee:asc">Lowest Delivery Fee</option>
+                    <option value="vendor:asc">Vendor Name</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none h-4 w-4 text-amoled-gray-300" />
+                </div>
+              </div>
+            </div>
             <CompareTable comparisons={comparisons} product={product} onAddToCart={handleAddAllToCart} />
           </section>
           

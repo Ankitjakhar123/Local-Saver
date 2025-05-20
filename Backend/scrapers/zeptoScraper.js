@@ -1,46 +1,160 @@
 import puppeteer from 'puppeteer';
 import Product from '../models/Product.js';
 
-// This is a simplified scraper for demonstration purposes
-// In a real application, this would be more robust with error handling and retry logic
 export async function scrapeProducts() {
   console.log('Starting Zepto scraper...');
   
   let browser;
   try {
-    // Launch puppeteer
+    // Launch puppeteer with stealth mode to avoid detection
     browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      headless: "new",
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--window-size=1920,1080',
+      ],
+      defaultViewport: { width: 1920, height: 1080 }
     });
     
     const page = await browser.newPage();
     
-    // Mock categories and products to scrape
+    // Set user agent to appear as a regular browser
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+    
+    // Configure request interception to bypass certain restrictions
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      if (req.resourceType() === 'image' || req.resourceType() === 'stylesheet' || req.resourceType() === 'font') {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+    
+    // Add extra headers to appear as a regular browser
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1'
+    });
+    
+    // Categories we'll scrape
     const categories = [
-      { name: 'Vegetables', url: 'https://www.zeptonow.com/vegetables' },
-      { name: 'Fruits', url: 'https://www.zeptonow.com/fruits' },
-      { name: 'Dairy', url: 'https://www.zeptonow.com/dairy-eggs' }
+      { name: 'Vegetables', url: '/cn/vegetables-fruits/fresh-vegetables?pid=homepage-icon-panel-fresh-vegetables' },
+      { name: 'Fruits', url: '/cn/vegetables-fruits/fresh-fruits?pid=homepage-icon-panel-fresh-fruits' },
+      { name: 'Dairy', url: '/cn/dairy-breakfast/dairy?pid=homepage-icon-panel-dairy' }
     ];
     
+    // Navigate to Zepto homepage
+    await page.goto('https://www.zeptonow.com/', { 
+      waitUntil: 'networkidle2',
+      timeout: 60000 
+    });
+    
+    console.log('Landed on Zepto homepage');
+    
+    // Wait for location popup and set location (Bangalore - Indiranagar)
+    try {
+      const locationInputVisible = await page.waitForSelector('input[placeholder="e.g. Koramangala, Indiranagar"]', { timeout: 5000 });
+      if (locationInputVisible) {
+        // Enter location
+        await page.type('input[placeholder="e.g. Koramangala, Indiranagar"]', 'Indiranagar');
+        console.log('Entered location');
+        
+        await page.waitForTimeout(2000);
+        
+        // Select the first location from dropdown
+        const locationDropdown = await page.waitForSelector('.css-17w6ivi', { timeout: 5000 });
+        if (locationDropdown) {
+          await locationDropdown.click();
+          console.log('Selected location from dropdown');
+          
+          // Wait for location to be set and page to load
+          await page.waitForNavigation({ waitUntil: 'networkidle2' });
+          console.log('Location set successfully');
+        }
+      }
+    } catch (error) {
+      console.log('Location popup not found or already set');
+    }
+    
+    // Process each category
     for (const category of categories) {
       console.log(`Scraping ${category.name}...`);
       
-      // Set pincode (this would typically be done by selecting a location on Zepto)
-      // This is a simplified version and would be more complex in a real scraper
-      await page.goto('https://www.zeptonow.com/', { waitUntil: 'networkidle2' });
+      // Navigate to category page
+      await page.goto(`https://www.zeptonow.com${category.url}`, { 
+        waitUntil: 'networkidle2',
+        timeout: 60000 
+      });
       
-      // In a real scraper, we would:
-      // 1. Navigate to Zepto
-      // 2. Set location and pincode
-      // 3. Navigate to category pages
-      // 4. Extract product information
+      console.log(`Navigated to ${category.name} page`);
       
-      // For demonstration, we'll generate mock data
-      const mockProducts = generateMockProducts(category.name);
+      // Wait for products to load
+      await page.waitForSelector('.css-1gia3lz', { timeout: 10000 });
+      
+      // Extract product data
+      const products = await page.evaluate((categoryName) => {
+        const productCards = Array.from(document.querySelectorAll('.css-1gia3lz'));
+        return productCards.slice(0, 20).map(card => {
+          // Extract price
+          const priceElement = card.querySelector('.css-1os9jgn');
+          let price = 0;
+          if (priceElement) {
+            const priceText = priceElement.textContent.trim();
+            // Extract number from string like "₹45" or "₹45.50"
+            const priceMatch = priceText.match(/₹(\d+(\.\d+)?)/);
+            price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+          }
+          
+          // Extract name
+          const nameElement = card.querySelector('.css-17uxs1p');
+          const name = nameElement ? nameElement.textContent.trim() : 'Unknown Product';
+          
+          // Extract image URL
+          const imageElement = card.querySelector('img');
+          const image = imageElement ? imageElement.src : '';
+          
+          // Extract quantity/unit
+          const weightElement = card.querySelector('.css-1m5lvlt');
+          let unit = weightElement ? weightElement.textContent.trim() : '';
+          
+          // Check if the product is in stock
+          const outOfStockElement = card.querySelector('.css-1hbmoh1'); // Adjust selector based on Zepto's UI
+          const inStock = !outOfStockElement;
+          
+          // Extract product URL
+          const linkElement = card.querySelector('a');
+          const productUrl = linkElement ? linkElement.href : '';
+          
+          return {
+            name,
+            category: categoryName,
+            description: `Fresh ${name.toLowerCase()} available at Zepto`,
+            image,
+            unit,
+            price,
+            inStock,
+            url: productUrl
+          };
+        });
+      }, category.name);
+      
+      console.log(`Extracted ${products.length} products from ${category.name}`);
       
       // Save products to database
-      for (const productData of mockProducts) {
+      for (const productData of products) {
+        // Skip products with invalid data
+        if (!productData.name || productData.name === 'Unknown Product' || productData.price === 0) {
+          console.log('Skipping product with invalid data');
+          continue;
+        }
+        
         // Check if product already exists
         let product = await Product.findOne({ 
           name: productData.name,
@@ -58,6 +172,7 @@ export async function scrapeProducts() {
             currentPrices: [],
             priceHistory: []
           });
+          console.log(`Created new product: ${productData.name}`);
         }
         
         // Update or add Zepto price
@@ -69,9 +184,9 @@ export async function scrapeProducts() {
           vendor: 'Zepto',
           price: productData.price,
           inStock: productData.inStock,
-          deliveryFee: 10, // Zepto typically charges delivery fee
-          deliveryTime: '10-15 min',
-          url: `https://www.zeptonow.com/p/${productData.name.toLowerCase().replace(/\s+/g, '-')}`,
+          deliveryFee: 15, // Zepto's standard delivery fee
+          deliveryTime: '10-20 min',
+          url: productData.url,
           updatedAt: new Date()
         };
         
@@ -87,12 +202,16 @@ export async function scrapeProducts() {
           vendor: 'Zepto',
           price: productData.price,
           inStock: productData.inStock,
-          deliveryFee: 10,
-          deliveryTime: '10-15 min'
+          deliveryFee: 15,
+          deliveryTime: '10-20 min'
         });
         
         await product.save();
+        console.log(`Saved ${productData.name} to database`);
       }
+      
+      // Wait a bit between categories to avoid rate limiting
+      await page.waitForTimeout(3000);
     }
     
     console.log('Zepto scraping completed successfully');
@@ -101,78 +220,11 @@ export async function scrapeProducts() {
   } finally {
     if (browser) {
       await browser.close();
+      console.log('Browser closed');
     }
   }
 }
 
-// Helper function to generate mock product data
-function generateMockProducts(category) {
-  const mockProducts = [];
-  const count = Math.floor(Math.random() * 10) + 5; // 5-15 products per category
-  
-  const vegetables = [
-    { name: 'Tomato', unit: 'kg', min: 40, max: 80 },
-    { name: 'Potato', unit: 'kg', min: 30, max: 50 },
-    { name: 'Onion', unit: 'kg', min: 25, max: 60 },
-    { name: 'Carrot', unit: 'kg', min: 50, max: 80 },
-    { name: 'Cucumber', unit: 'kg', min: 40, max: 70 },
-    { name: 'Capsicum', unit: 'kg', min: 60, max: 100 },
-    { name: 'Cauliflower', unit: 'piece', min: 40, max: 70 },
-    { name: 'Cabbage', unit: 'piece', min: 35, max: 60 }
-  ];
-  
-  const fruits = [
-    { name: 'Apple', unit: 'kg', min: 100, max: 180 },
-    { name: 'Banana', unit: 'dozen', min: 50, max: 80 },
-    { name: 'Orange', unit: 'kg', min: 80, max: 120 },
-    { name: 'Watermelon', unit: 'piece', min: 50, max: 100 },
-    { name: 'Mango', unit: 'kg', min: 150, max: 300 },
-    { name: 'Papaya', unit: 'piece', min: 60, max: 120 },
-    { name: 'Pineapple', unit: 'piece', min: 50, max: 100 }
-  ];
-  
-  const dairy = [
-    { name: 'Milk', unit: 'liter', min: 50, max: 80 },
-    { name: 'Curd', unit: 'kg', min: 60, max: 90 },
-    { name: 'Paneer', unit: '200g', min: 80, max: 120 },
-    { name: 'Cheese', unit: '200g', min: 120, max: 180 },
-    { name: 'Butter', unit: '500g', min: 220, max: 300 },
-    { name: 'Ghee', unit: 'liter', min: 500, max: 700 }
-  ];
-  
-  let productList;
-  switch (category) {
-    case 'Vegetables':
-      productList = vegetables;
-      break;
-    case 'Fruits':
-      productList = fruits;
-      break;
-    case 'Dairy':
-      productList = dairy;
-      break;
-    default:
-      productList = [...vegetables, ...fruits, ...dairy];
-  }
-  
-  for (let i = 0; i < count && i < productList.length; i++) {
-    const product = productList[i];
-    const price = Math.floor(Math.random() * (product.max - product.min + 1)) + product.min;
-    
-    mockProducts.push({
-      name: product.name,
-      category,
-      description: `Fresh ${product.name.toLowerCase()} available daily`,
-      image: `https://source.unsplash.com/random/400x400/?${product.name.toLowerCase()}`,
-      unit: product.unit,
-      price,
-      inStock: Math.random() > 0.1 // 90% chance it's in stock
-    });
-  }
-  
-  return mockProducts;
-}
-
-// Run the scraper once on import (for testing)
-// In a real app, this would be scheduled via cron
+// Run the scraper via cron scheduling in index.js
+// For testing, you can uncomment the line below
 // scrapeProducts().catch(console.error);
